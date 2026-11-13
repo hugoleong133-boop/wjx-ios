@@ -1,0 +1,68 @@
+name: build-unsigned-ipa
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 查看工具链
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: 安装 XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: 生成 Xcode 工程
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: 编译（不签名）
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project WjxAutoFill.xcodeproj \
+            -target WjxAutoFill \
+            -configuration Release \
+            -sdk iphoneos \
+            -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            CONFIGURATION_BUILD_DIR="$PWD/build" \
+            build | tail -40
+
+      - name: 打包未签名 IPA
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          APP="build/WjxAutoFill.app"
+          test -d "$APP"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          /usr/bin/zip -qry WjxAutoFill-unsigned.ipa Payload
+          ls -lh WjxAutoFill-unsigned.ipa
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist" || true
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: WjxAutoFill-unsigned-ipa
+          path: ios/WjxAutoFill-unsigned.ipa
+          if-no-files-found: error

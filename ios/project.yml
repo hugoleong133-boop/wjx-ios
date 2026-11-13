@@ -1,0 +1,35 @@
+name: WjxAutoFill
+options:
+  bundleIdPrefix: com.local.wjx
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+targets:
+  WjxAutoFill:
+    type: application
+    platform: iOS
+    scheme:
+      testTargets: []
+    sources:
+      - path: Sources
+      - path: Resources
+        excludes:
+          - "Info.plist"
+    settings:
+      base:
+        PRODUCT_NAME: WjxAutoFill
+        PRODUCT_BUNDLE_IDENTIFIER: com.local.wjx.autofill
+        INFOPLIST_FILE: Resources/Info.plist
+        MARKETING_VERSION: "1.3"
+        CURRENT_PROJECT_VERSION: "4"
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_BITCODE: NO
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
+        DEVELOPMENT_TEAM: ""
