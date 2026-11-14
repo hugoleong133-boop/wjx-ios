@@ -136,6 +136,15 @@ struct ContentView: View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
                 Button {
+                    Task { await filler.parseOnly(urlText: url) }
+                } label: {
+                    Text("解析问卷").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(filler.state != "idle")
+
+                Button {
+                    if !showWeb { showWeb = true }
                     var cfg = RunConfig()
                     cfg.url = url.trimmingCharacters(in: .whitespacesAndNewlines)
                     cfg.count = max(1, Int(countText) ?? 1)
@@ -189,6 +198,14 @@ struct ContentView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(filler.questions.isEmpty)
+
+                Button {
+                    showWeb.toggle()
+                } label: {
+                    Text(showWeb ? "隐藏网页" : "显示网页").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(showWeb ? .blue : nil)
             }
         }
     }

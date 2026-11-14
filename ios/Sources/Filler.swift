@@ -105,12 +105,16 @@ final class Filler: NSObject, ObservableObject {
         log("计划 \(cfg.count) 份｜单份 \(Int(cfg.durationLow))-\(Int(cfg.durationHigh)) 秒")
 
         await load(url)
-        await sleep(3)
+        let n = await waitForFields()
+        if n == 0 {
+            log("！没解析到题目。点右上角「显示网页」看看是否被验证码拦住")
+            return
+        }
         questions = await fetchQuestions()
         questionCount = questions.count
         pageCount = Set(questions.map { $0.pg }).count
         guard !questions.isEmpty else {
-            log("！没解析到题目，可能被验证码拦住"); return
+            log("！页面有 \(n) 个题目元素，但解析失败"); return
         }
         log("[题库] \(questionCount) 题 / \(pageCount) 页")
 
@@ -238,28 +242,73 @@ final class Filler: NSObject, ObservableObject {
             let done: () -> Void = {
                 if !finished { finished = true; cont.resume() }
             }
-            web.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 45))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { done() }
+            web.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 60))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { done() }
         }
+    }
+
+    /// 等待页面出现题目（最多 25 秒）
+    private func waitForFields(timeout: Double = 25) async -> Int {
+        let steps = Int(timeout / 1.0)
+        for _ in 0..<steps {
+            if let s = await js(PageScripts.pageState) as? String,
+               let d = s.data(using: .utf8),
+               let st = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                let n = st["fields"] as? Int ?? 0
+                if n > 0 { return n }
+                if st["hasCaptcha"] as? Bool == true {
+                    log("[页面] 检测到验证码，请在下方「显示网页」里手动完成")
+                    return 0
+                }
+            }
+            await sleep(1.0)
+        }
+        return 0
     }
 
     private func fetchQuestions() async -> [Question] {
         var all: [Int: Question] = [:]
         for _ in 0..<12 {
-            if let arr = await jsArray(PageScripts.parse) {
-                for item in arr {
-                    if let q = try? JSONDecoder().decode(Question.self, from: item) {
-                        all[q.topic] = q
-                    }
-                }
+            if let json = await js(PageScripts.parse) as? String,
+               let data = json.data(using: .utf8),
+               let arr = try? JSONDecoder().decode([Question].self, from: data) {
+                for q in arr { all[q.topic] = q }
             }
             _ = await js(PageScripts.clearOverlay)
             let moved = await jsBool(PageScripts.nextPage)
             if !moved { break }
-            await sleep(0.9)
+            await sleep(1.0)
         }
         _ = await js(PageScripts.clearOverlay)
         return all.values.sorted { $0.topic < $1.topic }
+    }
+
+    /// 只解析不提交（界面「解析问卷」按钮）
+    func parseOnly(urlText: String) async {
+        cfg.url = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: cfg.url), !cfg.url.isEmpty else {
+            log("！链接无效")
+            return
+        }
+        log("[解析] 打开问卷…")
+        await load(url)
+        let n = await waitForFields()
+        if n == 0 {
+            let st = await js(PageScripts.pageState) as? String ?? "{}"
+            log("[页面] 状态：\(st.prefix(200))")
+            log("！没出现题目元素。点「显示网页」看看实际页面")
+            return
+        }
+        questions = await fetchQuestions()
+        questionCount = questions.count
+        pageCount = Set(questions.map { $0.pg }).count
+        if questions.isEmpty {
+            log("！有 \(n) 个题目元素但解析失败")
+        } else {
+            let types = Dictionary(grouping: questions, by: { $0.type }).mapValues { $0.count }
+            log("[解析] \(questionCount) 题 / \(pageCount) 页，题型 \(types)")
+        }
+        await refreshIP()
     }
 
     private func js(_ script: String) async -> Any? {
@@ -274,28 +323,37 @@ final class Filler: NSObject, ObservableObject {
         (await js(script) as? Bool) ?? false
     }
 
-    private func jsArray(_ script: String) async -> [Data]? {
-        guard let raw = await js(script) as? [[String: Any]] else { return nil }
-        return raw.compactMap { try? JSONSerialization.data(withJSONObject: $0) }
-    }
-
     private func jsDict(_ script: String) async -> [String: Any]? {
         await js(script) as? [String: Any]
     }
 
     func refreshIP() async {
-        let url = URL(string: "https://api.ipify.org?format=json")!
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            if let d = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let addr = d["ip"] as? String {
-                ip = addr
-            } else if let s = String(data: data, encoding: .utf8) {
-                ip = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sources = [
+            "https://api.ipify.org?format=json",
+            "https://ipinfo.io/json",
+            "https://api.ip.sb/jsonip",
+        ]
+        for src in sources {
+            guard let url = URL(string: src) else { continue }
+            var req = URLRequest(url: url)
+            req.timeoutInterval = 8
+            do {
+                let (data, _) = try await URLSession.shared.data(for: req)
+                if let d = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    if let a = d["ip"] as? String { ip = a; return }
+                }
+                if let s = String(data: data, encoding: .utf8) {
+                    let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.range(of: #"^\d{1,3}(\.\d{1,3}){3}$"#, options: .regularExpression) != nil {
+                        ip = trimmed
+                        return
+                    }
+                }
+            } catch {
+                continue
             }
-        } catch {
-            ip = "检测失败"
         }
+        ip = "检测失败"
     }
 
     private func sleep(_ seconds: Double) async {
