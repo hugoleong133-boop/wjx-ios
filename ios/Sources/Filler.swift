@@ -30,12 +30,59 @@ final class Filler: NSObject, ObservableObject {
         let conf = WKWebViewConfiguration()
         conf.allowsInlineMediaPlayback = true
         conf.defaultWebpagePreferences.allowsContentJavaScript = true
+        // 在文档开始前注入，抹掉 WKWebView 特有的可检测特征
+        let ucc = WKUserContentController()
+        ucc.addUserScript(WKUserScript(source: Filler.stealthJS,
+                                       injectionTime: .atDocumentStart,
+                                       forMainFrameOnly: false))
+        conf.userContentController = ucc
         web = WKWebView(frame: .zero, configuration: conf)
         super.init()
         web.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
             + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
         UIApplication.shared.isIdleTimerDisabled = true
     }
+
+    /// 让 WKWebView 表现得像 Safari（同内核，但特性集不同）
+    static let stealthJS = """
+    (function () {
+      try {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      } catch (e) {}
+      try {
+        window.chrome = window.chrome || { runtime: {} };
+      } catch (e) {}
+      try {
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['zh-CN', 'zh-Hant', 'zh', 'en']
+        });
+      } catch (e) {}
+      try {
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => [
+            { name: 'WebKit PDF' }, { name: 'WebKit PDF Viewer' }, { name: 'QuickTime Plug-in' }
+          ]
+        });
+      } catch (e) {}
+      try {
+        Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 5 });
+      } catch (e) {}
+      try {
+        Object.defineProperty(navigator, 'standalone', { get: () => false });
+      } catch (e) {}
+      try {
+        if (!window.safari) {
+          window.safari = { pushNotification: { permission: { query: () => {} } } };
+        }
+      } catch (e) {}
+      try {
+        // Safari 的 requestIdleCallback 与后台节流行为
+        if (!window.requestIdleCallback) {
+          window.requestIdleCallback = (cb) => setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 50 }), 1);
+        }
+      } catch (e) {}
+    })();
+    """
 
     // MARK: 日志
 
