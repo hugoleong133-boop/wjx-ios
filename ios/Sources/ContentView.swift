@@ -63,7 +63,6 @@ struct ContentView: View {
             .background(Color(UIColor.systemGroupedBackground))
             .navigationTitle("问卷助手")
             .navigationBarTitleDisplayMode(.inline)
-            .scrollDismissesKeyboard(.interactively)
             .onTapGesture {
                 UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
                                                 to: nil, from: nil, for: nil)
