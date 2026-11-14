@@ -63,7 +63,19 @@ struct ContentView: View {
             .background(Color(UIColor.systemGroupedBackground))
             .navigationTitle("问卷助手")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .onTapGesture {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                to: nil, from: nil, for: nil)
+            }
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("收起键盘") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                        to: nil, from: nil, for: nil)
+                    }
+                    .font(.system(size: 12))
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button("统计详情") {

@@ -239,7 +239,7 @@ final class Filler: NSObject, ObservableObject {
 
         // 提交
         _ = await js(PageScripts.clearOverlay)
-        _ = await js("() => { window.scrollTo(0, document.body.scrollHeight); }")
+        _ = await js(PageScripts.scrollBottom)
         await sleep(0.5)
         _ = await js(PageScripts.clearOverlay)
         _ = await js(PageScripts.submit)
@@ -248,7 +248,9 @@ final class Filler: NSObject, ObservableObject {
         var joinid = ""
         for _ in 0..<25 {
             await sleep(1.0)
-            if let r = await jsDict(PageScripts.readResult) {
+            if let s = await js(PageScripts.readResult) as? String,
+               let d = s.data(using: .utf8),
+               let r = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
                 let jid = r["joinid"] as? String ?? ""
                 let done = r["done"] as? Bool ?? false
                 let c = r["code"] as? String ?? ""
